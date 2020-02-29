@@ -1,23 +1,31 @@
 from torchtext import data
 from tqdm import tqdm
 import pandas
+import random
 
 START = 'START'
 END = ' END'
 
-def yelp_generator(csv_path):
-    reader = pandas.read_csv(csv_path, sep=',', names=['stars', 'review'], chunksize=10 ** 4)
-    example_id = 0
-    print('reading')
-    for df in reader:
-        for index, row in df.iterrows():
-            review = START + ' ' + row['review'] + ' ' + END
-            stars = row['stars']
-            yield {"review": review, "stars": stars, "id": example_id}
-            example_id += 1
+
+def lines_generator():
+    with open('/cs/labs/dshahaf/omribloch/data/text_lord/restorant/sentiment.train.0') as file:
+        all_negative = file.readlines()
+    with open('/cs/labs/dshahaf/omribloch/data/text_lord/restorant/sentiment.train.1') as file:
+        all_positive = file.readlines()
+
+    i = 0
+    for example in all_negative:
+        example = START + ' ' + example + ' ' + END
+        yield {'id': i, 'stars': 0, 'review': example}
+        i += 1
+
+    for example in all_positive:
+        example = START + ' ' + example + ' ' + END
+        yield {'id': i, 'stars': 1, 'review': example}
+        i += 1
 
 
-class DataFrameDataset(data.Dataset):
+class RestDataset(data.Dataset):
 
     def __init__(self, example_generator, id_field, stars_field, review_field, max_examples, is_test=False, **kwargs):
         fields = [('id', id_field), ('stars', stars_field), ('review', review_field)]
