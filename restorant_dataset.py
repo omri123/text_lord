@@ -3,8 +3,8 @@ from tqdm import tqdm
 import pandas
 import random
 
-START = 'START'
-END = ' END'
+START = '<s>'
+END = '</s>'
 
 
 def lines_generator():
