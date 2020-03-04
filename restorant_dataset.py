@@ -13,16 +13,23 @@ def lines_generator():
     with open('/cs/labs/dshahaf/omribloch/data/text_lord/restorant/sentiment.train.1') as file:
         all_positive = file.readlines()
 
-    i = 0
-    for example in all_negative:
-        example = START + ' ' + example + ' ' + END
-        yield {'id': i, 'stars': 0, 'review': example}
-        i += 1
+    for i in range(min(len(all_negative), len(all_positive))):
 
-    for example in all_positive:
-        example = START + ' ' + example + ' ' + END
-        yield {'id': i, 'stars': 1, 'review': example}
-        i += 1
+        example = START + ' ' + all_negative[i] + ' ' + END
+        yield {'id': 2*i, 'stars': 0, 'review': example}
+
+        example = START + ' ' + all_positive[i] + ' ' + END
+        yield {'id': 2*i + 1, 'stars': 1, 'review': example}
+    # i = 0
+    # for example in all_negative:
+    #     example = START + ' ' + example + ' ' + END
+    #     yield {'id': i, 'stars': 0, 'review': example}
+    #     i += 1
+    #
+    # for example in all_positive:
+    #     example = START + ' ' + example + ' ' + END
+    #     yield {'id': i, 'stars': 1, 'review': example}
+    #     i += 1
 
 
 class RestDataset(data.Dataset):
@@ -44,20 +51,16 @@ class RestDataset(data.Dataset):
     def sort_key(ex):
         return len(ex.review)
 
-    # @classmethod
-    # def splits(cls, text_field, label_field, train_df, val_df=None, test_df=None, **kwargs):
-    #     train_data, val_data, test_data = (None, None, None)
-    #
-    #     if train_df is not None:
-    #         train_data = cls(train_df.copy(), text_field, label_field, **kwargs)
-    #     if val_df is not None:
-    #         val_data = cls(val_df.copy(), text_field, label_field, **kwargs)
-    #     if test_df is not None:
-    #         test_data = cls(test_df.copy(), text_field, label_field, True, **kwargs)
-    #
-    #     return tuple(d for d in (train_data, val_data, test_data) if d is not None)
-        
-# train_ds, val_ds, test_ds = DataFrameDataset.splits(
-#   text_field=TEXT_FIELD, label_field=LABEL_FIELD, train_df=train_df, val_df=val_df, test_df=test_df)
 
-# def get_dataset(vocab_size=10000, batch_size=32)
+def get_dataset(max_examples):
+    g = lines_generator()
+
+    id_f = data.Field(sequential=False, use_vocab=False)
+    stars_f = data.Field(sequential=False, use_vocab=False)
+    review_f = data.Field(sequential=True, use_vocab=True)
+
+    dataset = RestDataset(g, id_f, stars_f, review_f, max_examples)
+
+    review_f.build_vocab(dataset)
+
+    return dataset, review_f.vocab
