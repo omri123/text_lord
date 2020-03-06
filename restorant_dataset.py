@@ -1,16 +1,14 @@
 from torchtext import data
 from tqdm import tqdm
-import pandas
-import random
 
 START = '<s>'
 END = '</s>'
 
 
 def lines_generator():
-    with open('/cs/labs/dshahaf/omribloch/data/text_lord/restorant/sentiment.train.0') as file:
+    with open('/home/omribloch/data/yelp-rest/sentiment.train.0') as file:
         all_negative = file.readlines()
-    with open('/cs/labs/dshahaf/omribloch/data/text_lord/restorant/sentiment.train.1') as file:
+    with open('/home/omribloch/data/yelp-rest/sentiment.train.1') as file:
         all_positive = file.readlines()
 
     for i in range(min(len(all_negative), len(all_positive))):
@@ -52,7 +50,7 @@ class RestDataset(data.Dataset):
         return len(ex.review)
 
 
-def get_dataset(max_examples):
+def get_dataset(max_examples, vocab=None):
     g = lines_generator()
 
     id_f = data.Field(sequential=False, use_vocab=False)
@@ -61,6 +59,9 @@ def get_dataset(max_examples):
 
     dataset = RestDataset(g, id_f, stars_f, review_f, max_examples)
 
-    review_f.build_vocab(dataset)
+    if vocab:
+        review_f.vocab = vocab
+    else:
+        review_f.build_vocab(dataset)
 
     return dataset, review_f.vocab
