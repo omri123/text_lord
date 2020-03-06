@@ -46,6 +46,12 @@ class NoEncoder(FairseqEncoder):
         src_lengths is (batch)-size array full of 2.
         """
 
+        def foo(emb_layer):
+            for param in emb_layer.parameters():
+                print(param.shape)
+                print(param)
+                return param
+
         batch_size = src_tokens.size()[0]
 
         # content embedding and noise
@@ -64,7 +70,7 @@ class NoEncoder(FairseqEncoder):
         x = F.dropout(x, p=self.dropout, training=self.training)
 
         return {
-            'encoder_out': (x,x),
+            'encoder_out': (content, content),
             'encoder_padding_mask': None
         }
 
@@ -92,7 +98,7 @@ def create_model(device, nsamples, padding_index, ntokens, dim, noise_std, dropo
 
     decoder = FConvDecoder(dictionary,
                            embed_dim=dim,
-                           out_embed_dim=dim,
+                           out_embed_dim=dim // 2,
                            max_positions=max_positions,
                            convolutions=((dim, 3),) * nconv)
 

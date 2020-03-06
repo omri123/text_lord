@@ -1,5 +1,6 @@
 import torch
 import os
+import sys
 import shutil
 
 import pickle
@@ -19,7 +20,8 @@ import torch.nn.functional as F
 import torch.optim as optim
 import os
 from torch.utils.tensorboard import SummaryWriter
-from utils import AccuracyTensorboradWriter, write_weight_statitsics, ask_user_confirmation
+from utils import AccuracyTensorboradWriter, write_weight_statitsics, \
+    ask_user_confirmation, load_checkpoint, checkpoint, vocab_to_dictionary
 
 torch.manual_seed(1)
 
@@ -28,17 +30,7 @@ torch.manual_seed(1)
 nsamples = 300000
 
 
-def checkpoint(model, path):
-    if os.path.exists(path):
-        os.remove(path)
-    torch.save(model.state_dict(), path)
 
-
-def load_checkpoint(path, *args):
-    print(f'loading checkpoint {path}')
-    model = create_model(*args)
-    model.load_state_dict(torch.load(path))
-    return model
 
 
 def shift_left(tensor, padding_value, device):
@@ -48,7 +40,7 @@ def shift_left(tensor, padding_value, device):
     """
     assert len(tensor.size()) == 2
     new_tensor = torch.full(tensor.size(), padding_value, dtype=torch.int64, device=device)
-    new_tensor[0:-1, :] = tensor[1:, :]
+    new_tensor[:, 0:-1] = tensor[:, 1:]
     return new_tensor
 
 
@@ -64,27 +56,21 @@ def configure_logger(path):
     logger = logging.getLogger('trainer')
     logger.setLevel(logging.INFO)
 
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
     fh = logging.FileHandler(path)
     fh.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     fh.setFormatter(formatter)
     logger.addHandler(fh)
 
     # create console handler
-    ch = logging.StreamHandler()
+    ch = logging.StreamHandler(stream=sys.stdout)
     ch.setLevel(logging.INFO)
     ch.setFormatter(formatter)
     logger.addHandler(ch)
 
     logger.info('Logger created! log path is \n{}'.format(path))
     return logger
-
-
-def vocab_to_dictionary(vocab):
-    decoder_dictionary = fairseq.data.dictionary.Dictionary()
-    for i in range(len(vocab)):
-        decoder_dictionary.add_symbol(vocab.itos[i])
-    return decoder_dictionary
 
 
 def main():
@@ -98,12 +84,14 @@ def main():
     parser.add_argument('--resume', action='store_true', help='resume training from  old ckpt with this configuration')
     parser.add_argument('--ckpt_every', type=int, default=25, help='how many epochs between checkpoints')
     parser.add_argument('--dir', type=str,
-                        default='/root/text_lord/train',
+                        default='/cs/labs/dshahaf/omribloch/data/text_lord/restorant/train',
                         help='here the script will create a directory named by the parameters')
+    parser.add_argument('--data_dir', type=str, default='/cs/labs/dshahaf/omribloch/data/text_lord/restorant/')
     # training
     parser.add_argument('--batch_size', type=int, help='batch size', required=True)
     parser.add_argument('--epochs', type=int, help='number pf epochs to train',  required=True)
     parser.add_argument('--content_lr', type=float, help='learning rate for the content embedding',  required=True)
+    parser.add_argument('--lr', type=float, help='learning rate for all',  required=True)
     parser.add_argument('--content_wdecay', type=float, help='weight decay for the content embedding',  required=True)
     # model
     parser.add_argument('--dim', type=int, help='model dimension', required=True)
@@ -160,7 +148,7 @@ def main():
             print('vocab was loaded')
 
     # create dataset
-    dataset, vocab = get_dataset(args.nsamples, vocab)
+    dataset, vocab = get_dataset(args.nsamples, args.data_dir, vocab)
     logger.info(f'dataset loaded, vocab size is {len(vocab)}')
 
     # serialize the vocab object
@@ -179,7 +167,7 @@ def main():
                              args.ntokens, args.dim, args.content_noise, 0.1,
                              decoder_dictionary, 50, args.nconv)
     else:
-        model = load_checkpoint(os.path.join(foldername, 'last_checkpoint.ckpt'),
+        model = load_checkpoint(os.path.join(foldername, 'last_checkpoint.ckpt'), device,
                                 device, args.nsamples, decoder_dictionary.pad(),
                                 args.ntokens, args.dim, args.content_noise, 0.1,
                                 decoder_dictionary, 50, args.nconv)
@@ -196,8 +184,10 @@ def main():
                 'we are going to have {} iterations per epoch'.format(nsamples // args.batch_size))
 
     prev_epoch_loss = np.inf
-    lr = 0.25
+    lr = args.lr
     content_lr = args.content_lr
+    # content_lr = lr
+    # print('hahahahahahahah')
 
     acc_writer = AccuracyTensorboradWriter(writer, logger)
 
@@ -206,14 +196,17 @@ def main():
 
         logger.info(f'starting epoch {epoch}, previous epoch loss is {prev_epoch_loss}')
         writer.add_scalar('lr/Learning-rate', lr, epoch)
+        content_lr = lr
         writer.add_scalar('lr/Content-Learning-rate', content_lr, epoch)
 
         # optimizers are created each epoch because from time to time there lr is reduced.
-        optimizer_model = optim.SGD(model_parameters, lr=lr, momentum=0.99,
-                                    nesterov=True)  # parameters convseq2seq paper
+        # optimizer_model = optim.SGD(model_parameters, lr=lr, momentum=0.99,
+        #                             nesterov=True)  # parameters convseq2seq paper
+
+        optimizer_model = optim.SGD(model_parameters, lr=lr)
 
         # sparse gradients, no momentum, large lr.
-        optimizer_content = optim.SGD(model.parameters(), lr=content_lr,
+        optimizer_content = optim.SGD(model.encoder.content_embeddings.parameters(), lr=content_lr,
                                       momentum=0, weight_decay=args.content_wdecay)
 
         losses = []
@@ -229,6 +222,7 @@ def main():
 
             # create input
             reviews = batch.review.transpose(1, 0)
+
             src_tokens = torch.cat([batch.id.unsqueeze(1), batch.stars.unsqueeze(1)], dim=1)
             src_lengths = torch.full((batch_size, 1), 5).to(device)
 
@@ -240,10 +234,12 @@ def main():
             logits_flat = logits.view(-1, len(vocab))
             targets_flat = shift_left(reviews, decoder_dictionary.pad(), device).reshape(-1)#.to(device)
 
-            loss = F.cross_entropy(logits_flat, targets_flat)
+            loss = F.cross_entropy(logits_flat, targets_flat, ignore_index=decoder_dictionary.pad())
             loss.backward()
             torch.nn.utils.clip_grad.clip_grad_value_(model.parameters(), 0.1)
-            optimizer_model.step()
+            if epoch % 5 == 0:
+                optimizer_model.step()
+
             optimizer_content.step()
 
             # finished training step, now logging
@@ -251,7 +247,7 @@ def main():
             writer.add_scalar('Loss/per-step', loss.item(), global_step)
 
             # acc
-            if global_step % 200 == 0:
+            if global_step % 1 == 0:
                 acc_writer.write_step(logits_flat, targets_flat, global_step)
 
             writer.add_scalar('Time/step-per-second', 1 / (time() - t), global_step)
@@ -269,16 +265,13 @@ def main():
 
         # reduce learning rate if needed
         epoch_loss = np.average(losses)
-        if epoch_loss >= prev_epoch_loss:
-            # if lr > content_lr:
-            logger.info(f'epoch {epoch} - reducing learning rate from {lr} to {lr / 3}')
-            lr = lr / 3
-            if lr < 1e-4:
-                logger.info(f'learning rate too low: {lr}. finised.')
-                raise Exception()
-            # else:
-            #     logger.info(f'epoch {epoch} - reducing content learning rate from {content_lr} to {content_lr / 3}')
-            #     content_lr = content_lr / 3
+        # if epoch_loss >= prev_epoch_loss:
+        #     # if lr > content_lr:
+        #     logger.info(f'epoch {epoch} - reducing learning rate from {lr} to {lr / 3}')
+        #     lr = lr / 3
+        #     if lr < 1e-4:
+        #         logger.info(f'learning rate too low: {lr}. finised.')
+        #         raise Exception()
 
         prev_epoch_loss = epoch_loss
 

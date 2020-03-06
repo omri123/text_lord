@@ -1,6 +1,9 @@
 import numpy as np
 import torch
 from torch.utils.tensorboard import SummaryWriter
+import fairseq
+from model import create_model
+import os
 
 
 class AccuracyTensorboradWriter:
@@ -55,3 +58,22 @@ def ask_user_confirmation(msg):
     while answer not in ["y", "n"]:
         answer = input(f"{msg}. OK to push to continue [Y/N]? ").lower()
     return answer == "y"
+
+
+def checkpoint(model, path):
+    if os.path.exists(path):
+        os.remove(path)
+    torch.save(model.state_dict(), path)
+
+
+def load_checkpoint(path, device, *args):
+    print(f'loading checkpoint {path}')
+    model = create_model(*args)
+    model.load_state_dict(torch.load(path, map_location=torch.device(device)))
+    return model
+
+def vocab_to_dictionary(vocab):
+    decoder_dictionary = fairseq.data.dictionary.Dictionary()
+    for i in range(len(vocab)):
+        decoder_dictionary.add_symbol(vocab.itos[i])
+    return decoder_dictionary
