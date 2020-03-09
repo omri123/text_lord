@@ -14,18 +14,50 @@ class AccuracyTensorboradWriter:
         self.accuracies = []
         self.accuracies10 = []
 
-    def write_step(self, logits_flat: torch.tensor, targets_flat: torch.tensor, step: int):
+    def write_step(self, logits_flat: torch.tensor, targets_flat: torch.tensor, step: int, ignore_index:int):
         logits_flat_np = logits_flat.detach().cpu().numpy()
         targets_flat_np = targets_flat.detach().cpu().numpy()
 
-        acc = np.sum(np.argmax(logits_flat_np, axis=1) == targets_flat_np) / targets_flat_np.size
-        acc10 = np.sum(
-            logits_flat_np.argsort()[:, -10:] == np.expand_dims(targets_flat_np, axis=1)) / targets_flat_np.size
+        tmp1 = np.argmax(logits_flat_np, axis=1) == targets_flat_np
+        tmp2 = tmp1[targets_flat_np != ignore_index]
+        acc = np.sum(tmp2) / np.sum(targets_flat_np != ignore_index)
 
         self.writer.add_scalar('Acc/top-1 step', acc, step)
-        self.writer.add_scalar('Acc/top-10 step', acc10, step)
         self.accuracies.append(acc)
-        self.accuracies10.append(acc10)
+
+    def write_epoch(self, epoch: int):
+        acc = np.average(self.accuracies)
+        self.logger.info(f'finished epoch {epoch} with acc {acc} ')
+        self.writer.add_scalar('Acc/top-1 epoch', acc, epoch)
+        self.accuracies = []
+
+
+class Accuracy10TensorboradWriter:
+
+    def __init__(self, writer: SummaryWriter, logger):
+        self.writer = writer
+        self.logger = logger
+        self.accuracies = []
+        self.accuracies10 = []
+        print("TODO!")
+        assert False
+
+    def write_step(self, logits_flat: torch.tensor, targets_flat: torch.tensor, step: int, ignore_index:int):
+        logits_flat_np = logits_flat.detach().cpu().numpy()
+        targets_flat_np = targets_flat.detach().cpu().numpy()
+
+        tmp1 = np.argmax(logits_flat_np, axis=1) == targets_flat_np
+        tmp2 = tmp1[targets_flat_np != ignore_index]
+        acc = np.sum(tmp2) / np.sum(targets_flat_np != ignore_index)
+
+        # acc = np.sum(np.argmax(logits_flat_np, axis=1) == targets_flat_np) / targets_flat_np.size
+        # acc10 = np.sum(
+        #     logits_flat_np.argsort()[:, -10:] == np.expand_dims(targets_flat_np, axis=1)) / targets_flat_np.size
+
+        self.writer.add_scalar('Acc/top-1 step', acc, step)
+        # self.writer.add_scalar('Acc/top-10 step', acc10, step)
+        self.accuracies.append(acc)
+        # self.accuracies10.append(acc10)
 
     def write_epoch(self, epoch: int):
         acc = np.average(self.accuracies)

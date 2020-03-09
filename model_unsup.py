@@ -28,13 +28,10 @@ class NoEncoder(FairseqEncoder):
 
         self.content_embeddings = Embedding(sample_size, embed_dim * ntokens, padding_index) # tokens-encoder, sample-specific
 
-        self.negative_embedding = PositionalEmbedding(num_embeddings=ntokens+1,
-                                                      embedding_dim=embed_dim,
-                                                      padding_idx=0)
-
-        self.positive_embedding = PositionalEmbedding(num_embeddings=ntokens+1,
-                                                      embedding_dim=embed_dim,
-                                                      padding_idx=0)
+        self.sentiment_embedding = torch.nn.Embedding(num_embeddings=20, embedding_dim=embed_dim * ntokens)
+        self.sentiment_embeddings_flags = torch.nn.Embedding(num_embeddings=sample_size, embedding_dim=20)
+        for p in self.sentiment_embeddings_flags.parameters():
+            torch.nn.init.uniform_(p, a=0.5, b=1.0)
 
         self.noise = Normal(loc=0.0, scale=noise_std)
 
@@ -60,7 +57,6 @@ class NoEncoder(FairseqEncoder):
         content = content + self.noise.sample(sample_shape=content.size()).to(content.device)
 
         # sentiment positional embedding
-        positions = torch.arange(1, self.ntokens+1).unsqueeze(0).to(content.device) # 1 x ntokens
         sentiment = src_tokens[:, 1].unsqueeze(1).unsqueeze(2) # batch x 1 x 1
 
         sentiment = self.positive_embedding(positions) * sentiment + \
@@ -70,7 +66,7 @@ class NoEncoder(FairseqEncoder):
         x = F.dropout(x, p=self.dropout, training=self.training)
 
         return {
-            'encoder_out': (x,x),
+            'encoder_out': (content, content),
             'encoder_padding_mask': None
         }
 
