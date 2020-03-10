@@ -23,12 +23,30 @@ from torch.utils.tensorboard import SummaryWriter
 from utils import AccuracyTensorboradWriter, write_weight_statitsics, \
     ask_user_confirmation, load_checkpoint, checkpoint, vocab_to_dictionary
 
+import kenlm
+from decode import gready_decode_single
+from nltk.translate.bleu_score import sentence_bleu
 torch.manual_seed(1)
 
 # dataset was downloaded using the link from here:      https://github.com/zhangxiangxiao/Crepe
 
 nsamples = 300000
 
+
+class PPLEvaluator:
+    # evaluate the pp of a sentence
+    def __init__(self):
+        self.lm = kenlm.Model('/cs/labs/dshahaf/omribloch/data/text_lord/restorant/kenlm.arpa')
+
+    def eval(self, model, vocab, review, stars: int, sid: int, gready=True):
+        sentence_as_list = gready_decode_single(model, vocab, stars, sid).split(' ')[1:-1] # remove <s> and <\s>
+        sentence_as_string = ' '.join(sentence_as_list)
+        ppl = self.lm.perplexity(sentence_as_string)
+
+        review_as_list = review.split(' ')[1:-1]
+        bleu = sentence_bleu([review_as_list], sentence_as_list, weights=[1, 0, 0, 0])
+
+        return ppl, bleu, sentence_as_string
 
 def drop_connect(model, rate):
     with torch.no_grad():
@@ -154,7 +172,6 @@ def main():
     logger.info(f'dataset loaded, vocab size is {len(vocab)}')
 
     # serialize the vocab object
-
     if not args.resume:
         with open(vocab_path, "wb") as file:
             pickle.dump(vocab, file)
@@ -191,21 +208,24 @@ def main():
                 'we are going to have {} iterations per epoch'.format(nsamples // args.batch_size))
 
     acc_writer = AccuracyTensorboradWriter(writer, logger)
+    ppl_evaluator = PPLEvaluator()
+
+    optimizer = optim.Adagrad(model_parameters)
+    content_optimizer = optim.Adagrad(content_parameters)
 
     global_step = 0
     for epoch in range(args.epochs):
 
-        optimizer = optim.Adagrad(model_parameters)
-        content_optimizer = optim.Adagrad(content_parameters)#, weight_decay=args.content_wdecay)
 
         losses = []
+        ppl = []
 
         train_iter = data.BucketIterator(dataset=dataset, batch_size=args.batch_size,
                                          sort_key=lambda x: len(x.review), sort=False,
                                          sort_within_batch=True, repeat=False, device='cpu')
 
         t = time()
-        for batch in tqdm(train_iter):
+        for step, batch in enumerate(tqdm(train_iter)):
 
             batch_size = batch.id.size()[0]
 
@@ -237,8 +257,22 @@ def main():
             writer.add_scalar('Loss/per-step', loss.item(), global_step)
 
             # acc
-            if global_step % 100 == 0:
+            if global_step % 10 == 0:
                 acc_writer.write_step(logits_flat, targets_flat, global_step, ignore_index=decoder_dictionary.pad())
+                ppls = []
+                bleus = []
+                for i in range(batch_size):
+                    sid = batch.id[i].item()
+                    stars = batch.stars[i].item()
+                    ppl, bleu = ppl_evaluator.eval(model, vocab, dataset[step].review, stars, sid)
+                    ppls.append(ppl)
+                    bleus.append(bleu)
+
+                writer.add_scalar('metrices/PPL-step', np.average(ppls), global_step)
+                writer.add_scalar('metrices/BLEU-step', np.average(bleus), global_step)
+                ppls.append(np.average(ppls))
+                ppls.append(np.average(bleus))
+
 
             writer.add_scalar('Time/step-per-second', 1 / (time() - t), global_step)
             t = time()
@@ -246,6 +280,8 @@ def main():
 
         drop_connect(model, args.drop_connect)
         writer.add_scalar('Loss/per-epoch', np.average(losses), epoch)
+        writer.add_scalar('metrices/PPL-epoch', np.average(ppls), epoch)
+        writer.add_scalar('metrices/BLEU-epoch', np.average(bleus), epoch)
         logger.info('epoch {} loss {}'.format(epoch, np.average(losses)))
         acc_writer.write_epoch(epoch)
 
