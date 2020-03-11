@@ -15,13 +15,13 @@ from torch.utils.tensorboard import SummaryWriter
 
 
 def gready_decode_single(model: NoEncoderFConvDecoderModel, vocab: torchtext.vocab,
-                         stars: int, sample_id: int, start_token=START, end_token=END):
+                         stars: int, sample_id: int, start_token=START, end_token=END, device='cpu'):
 
     max_length = 25
 
-    src_tokens = torch.tensor([[sample_id, stars]], dtype=torch.int64)
-    src_lengths = torch.full((1, 1), 5)
-    reviews = torch.tensor([[vocab.stoi[start_token]]], dtype=torch.int64)
+    src_tokens = torch.tensor([[sample_id, stars]], dtype=torch.int64, device=device)
+    src_lengths = torch.full((1, 1), 5, device=device)
+    reviews = torch.tensor([[vocab.stoi[start_token]]], dtype=torch.int64, device=device)
 
     sentence = [start_token]
 
@@ -36,7 +36,7 @@ def gready_decode_single(model: NoEncoderFConvDecoderModel, vocab: torchtext.voc
             break
 
         sentence_by_indecies = [vocab.stoi[word] for word in sentence]
-        reviews = torch.tensor([sentence_by_indecies], dtype=torch.int64)
+        reviews = torch.tensor([sentence_by_indecies], dtype=torch.int64, device=device)
 
     return ' '.join(sentence)
 
@@ -76,7 +76,7 @@ class BeamSearchNode(object):
         return self.eval() <= other.eval()
 
 
-def beam_decode_single(model, vocab, sample_id, stars, beam_width=10, topk=1, SOS_token='<s>', EOS_token='</s>', MAX_LENGTH=50):
+def beam_decode_single(model, vocab, sample_id, stars, beam_width=10, topk=1, device='cpu', SOS_token='<s>', EOS_token='</s>', MAX_LENGTH=50):
     """
     decode single example using beam search.
     :param decoder: a NoEncoderFConvDecoderModel object
@@ -90,8 +90,8 @@ def beam_decode_single(model, vocab, sample_id, stars, beam_width=10, topk=1, SO
     :return:
     """
 
-    src_tokens = torch.tensor([[sample_id, stars]], dtype=torch.int64)
-    src_lengths = torch.full((1, 1), 5)
+    src_tokens = torch.tensor([[sample_id, stars]], dtype=torch.int64, device=device)
+    src_lengths = torch.full((1, 1), 5, device=device)
     review = [SOS_token]
     # review = torch.tensor([[vocab.stoi[SOS_token]]], dtype=torch.int64)
 
@@ -117,7 +117,7 @@ def beam_decode_single(model, vocab, sample_id, stars, beam_width=10, topk=1, SO
 
         review = node.sent
         review_int = [vocab.stoi[w] for w in review]
-        review_torch = torch.tensor([review_int], dtype=torch.int64)
+        review_torch = torch.tensor([review_int], dtype=torch.int64, device=device)
 
         if review[-1] == EOS_token:
             solutions.append(node)

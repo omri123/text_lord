@@ -12,13 +12,21 @@ def lines_generator(path):
     with open(os.path.join(path, 'sentiment.train.1')) as file:
         all_positive = file.readlines()
 
-    for i in range(min(len(all_negative), len(all_positive))):
+    count = 0
+    for i in range(max(len(all_negative), len(all_positive))):
 
-        example = START + ' ' + all_negative[i] + ' ' + END
-        yield {'id': 2*i, 'stars': 0, 'review': example}
+        if i < len(all_negative):
+            example = START + ' ' + all_negative[i] + ' ' + END
+            yield {'id': count, 'stars': 0, 'review': example}
+            count += 1
 
-        example = START + ' ' + all_positive[i] + ' ' + END
-        yield {'id': 2*i + 1, 'stars': 1, 'review': example}
+        if i < len(all_positive):
+            example = START + ' ' + all_positive[i] + ' ' + END
+            yield {'id': count, 'stars': 1, 'review': example}
+            count += 1
+
+        if i >= len(all_negative) and i >= len(all_positive):
+            return
     # i = 0
     # for example in all_negative:
     #     example = START + ' ' + example + ' ' + END

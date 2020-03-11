@@ -8,6 +8,8 @@ from fairseq.models import FairseqEncoder, FairseqEncoderDecoderModel
 from fairseq.models.fconv import Embedding, PositionalEmbedding, FConvDecoder
 from torch.distributions import Normal
 
+from LargeEmbedding import LargeEmbedding
+
 
 class NoEncoder(FairseqEncoder):
     """
@@ -26,7 +28,8 @@ class NoEncoder(FairseqEncoder):
         self.dim = embed_dim
         self.ntokens = ntokens
 
-        self.content_embeddings = Embedding(sample_size, embed_dim * ntokens, padding_index) # tokens-encoder, sample-specific
+        # self.content_embeddings = Embedding(sample_size, embed_dim * ntokens, padding_index) # tokens-encoder, sample-specific
+        self.content_embeddings = LargeEmbedding(sample_size, embed_dim * ntokens, page_size=1024, num_devices=1, use_cuda=True) # tokens-encoder, sample-specific
 
         self.negative_embedding = PositionalEmbedding(num_embeddings=ntokens+1,
                                                       embedding_dim=embed_dim,

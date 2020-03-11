@@ -5,6 +5,15 @@ import fairseq
 from model import create_model
 import os
 
+def calc_accuracy(logits_flat, targets_flat, ignore_index):
+    logits_flat_np = logits_flat.detach().cpu().numpy()
+    targets_flat_np = targets_flat.detach().cpu().numpy()
+
+    tmp1 = np.argmax(logits_flat_np, axis=1) == targets_flat_np
+    tmp2 = tmp1[targets_flat_np != ignore_index]
+    acc = np.sum(tmp2) / np.sum(targets_flat_np != ignore_index)
+
+    return acc
 
 class AccuracyTensorboradWriter:
 

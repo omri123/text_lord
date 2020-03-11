@@ -5,9 +5,135 @@ import pickle
 import numpy as np
 import argparse
 from tqdm import tqdm
-
-from main import PPLEvaluator
+from nltk.translate.bleu_score import sentence_bleu
 import fasttext
+import kenlm
+
+from decode import gready_decode_single, beam_decode_single
+from torch.utils.tensorboard import SummaryWriter
+
+class Evaluator:
+    # evaluate the pp of a sentence
+    def __init__(self):
+        self.lm = kenlm.Model('/cs/labs/dshahaf/omribloch/data/text_lord/restorant/kenlm.arpa')
+        self.fasttext_classfier = fasttext.FastText.load_model('/cs/labs/dshahaf/omribloch/data/text_lord/restorant/fasttext_model.bin')
+        self.labels_dictionary = {'__label__positive': 1, '__label__negative': 0}
+
+    def evel_sentence(self, generated, original, generated_star):
+        ppl = self.lm.perplexity(generated)
+        bleu = sentence_bleu([original.split(' ')], generated.split(' '), weights=[1, 0, 0, 0])
+
+        predicted_label = self.fasttext_classfier.predict(generated)[0][0]
+        if self.labels_dictionary[predicted_label] == generated_star:
+            classified = 1
+        else:
+            classified = 0
+
+
+        return ppl, bleu, classified
+
+    def eval(self, model, vocab, review, stars: int, sid: int, gready=True, device='cpu'):
+        if gready:
+            lgenerated = gready_decode_single(model, vocab, stars, sid, device=device).split(' ')[1:-1] # remove <s> and <\s>
+        else:
+            lgenerated = beam_decode_single(model, vocab, sid, stars, beam_width=10, topk=1, device=device)[0]
+        sgenerated = ' '.join(lgenerated)
+        ppl = self.lm.perplexity(sgenerated)
+
+        loriginal = review.split(' ')[1:-1]
+        soriginal = ' '.join(loriginal)
+        original_ppl = self.lm.perplexity(soriginal)
+        bleu = sentence_bleu([loriginal], lgenerated, weights=[1, 0, 0, 0])
+
+        predicted_label = self.fasttext_classfier.predict(sgenerated)[0][0]
+        if self.labels_dictionary[predicted_label] == stars:
+            classified = 1
+        else:
+            classified = 0
+
+        return ppl, bleu, classified, soriginal, sgenerated, original_ppl
+
+
+def evaluate(model, vocab, dataset, nsamples_to_eval, iteration_number, logger, writer: SummaryWriter, gready=True, device='cpu'):
+    model = model.eval()
+    evaluator = Evaluator()
+
+    orig_ppl = []
+
+    reconstruct_ppl =[]
+    reconstruct_bleu = []
+
+    new_ppl = []
+    new_bleu = []
+
+    counter = 0
+    classified_correct_reconstruct = 0
+    classified_correct_generated = 0
+
+    for i in tqdm(range(len(dataset))):
+        if i % (len(dataset) // nsamples_to_eval) == 0:
+
+            sid = dataset[i].id
+            stars = dataset[i].stars
+            review_sentence = ' '.join(dataset[i].review)
+
+            ppl, bleu, classified, soriginal, sgenerated, original_ppl = evaluator.eval(model, vocab, review_sentence, stars, sid, gready, device=device)
+            orig_ppl.append(original_ppl)
+            reconstruct_ppl.append(ppl)
+            reconstruct_bleu.append(bleu)
+            classified_correct_reconstruct += classified
+
+            ppl, bleu, classified, soriginal, sgenerated_new, original_ppl = evaluator.eval(model, vocab, review_sentence, 1-stars, sid, gready, device=device)
+            new_ppl.append(ppl)
+            new_bleu.append(bleu)
+            classified_correct_generated += 1
+
+            if i % (len(dataset) // 10) == 0: # write only 10 texts to tensorboard.
+                writer.add_text(f'sample_{i}_orig', review_sentence, iteration_number)
+                writer.add_text(f'sample_{i}_reconstruct', soriginal, iteration_number)
+                writer.add_text(f'sample_{i}_new', sgenerated, iteration_number)
+                writer.add_text(f'sample_{i}_original_sentiment', str(stars), iteration_number)
+
+            counter += 1
+
+    writer.add_scalar('orig_ppl', np.average(orig_ppl), iteration_number)
+
+    writer.add_scalar('reconstruct_ppl', np.average(reconstruct_ppl), iteration_number)
+    writer.add_scalar('reconstruct_bleu', np.average(reconstruct_bleu), iteration_number)
+    writer.add_scalar('new_ppl', np.average(new_ppl), iteration_number)
+    writer.add_scalar('new_bleu', np.average(new_bleu), iteration_number)
+
+    writer.add_scalar('classified_correct_reconstruct', classified_correct_reconstruct / counter, iteration_number)
+    writer.add_scalar('classified_correct_generated', classified_correct_generated / counter, iteration_number)
+
+    logger.info('orig_ppl {}'.format(np.average(orig_ppl)))
+
+    logger.info('reconstruct_ppl {}'.format(np.average(reconstruct_ppl)))
+    logger.info('reconstruct_bleu {}'.format(np.average(reconstruct_bleu)))
+    logger.info('new_ppl {}'.format(np.average(new_ppl)))
+    logger.info('new_bleu {}'.format(np.average(new_bleu)))
+
+    logger.info('classified_correct_reconstruct {}'.format(classified_correct_reconstruct / counter))
+    logger.info('classified_correct_generated {}'.format(classified_correct_generated / counter))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 labels_dictionary = {'__label__positive': 1, '__label__negative': 0}
 
@@ -52,7 +178,7 @@ def main():
 
     dataset, vocab = get_dataset(args.nsamples, args.data_dir, vocab)
 
-    evaluator = PPLEvaluator()
+    evaluator = Evaluator()
     fasttext_classfier = fasttext.FastText.load_model('/cs/labs/dshahaf/omribloch/data/text_lord/restorant/fasttext_model.bin')
 
     orig_ppl = []
