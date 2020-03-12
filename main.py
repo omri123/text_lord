@@ -10,11 +10,9 @@ from restorant_dataset import get_dataset
 from model import create_model
 import os
 from torch.utils.tensorboard import SummaryWriter
-from utils import AccuracyTensorboradWriter, write_weight_statitsics, \
-    ask_user_confirmation, load_checkpoint, checkpoint, vocab_to_dictionary
+from archive.utils import ask_user_confirmation, load_checkpoint, vocab_to_dictionary
 
-from eval import Evaluator
-from train import train
+from archive.train import train
 from eval import evaluate
 torch.manual_seed(1)
 

@@ -1,17 +1,12 @@
 import torchtext
 from restorant_dataset import START, END
-from model import NoEncoderFConvDecoderModel, create_model
-from utils import load_checkpoint, vocab_to_dictionary
+from model import NoEncoderFConvDecoderModel
+from archive.utils import load_checkpoint, vocab_to_dictionary
 from restorant_dataset import get_dataset
 
-import torch
 import os
 import pickle
-import numpy as np
-from torchtext import data
 import copy
-
-from torch.utils.tensorboard import SummaryWriter
 
 
 def gready_decode_single(model: NoEncoderFConvDecoderModel, vocab: torchtext.vocab,
@@ -47,10 +42,7 @@ def gready_decode(model, vocab, src_tokens, src_lengths, start_token, end_token)
     pass
 
 
-import operator
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 from queue import PriorityQueue
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

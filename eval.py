@@ -1,4 +1,4 @@
-from utils import load_checkpoint, vocab_to_dictionary, load_checkpoint_partitioned
+from archive.utils import load_checkpoint, vocab_to_dictionary, load_checkpoint_partitioned
 from restorant_dataset import get_dataset
 import os
 import pickle

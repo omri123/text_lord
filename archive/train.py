@@ -1,14 +1,14 @@
 import torch
 import numpy as np
-from time import time, sleep
+from time import time
 from tqdm import tqdm
 from torchtext import data
 import torch.nn.functional as F
 import torch.optim as optim
 import os
 from torch.utils.tensorboard import SummaryWriter
-from utils import AccuracyTensorboradWriter, write_weight_statitsics, \
-    ask_user_confirmation, load_checkpoint, checkpoint, vocab_to_dictionary, calc_accuracy
+from archive.utils import write_weight_statitsics, \
+    checkpoint, calc_accuracy
 
 torch.manual_seed(1)
 

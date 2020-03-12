@@ -6,19 +6,16 @@ import pickle
 import argparse
 import numpy as np
 import logging
-from time import time, sleep
 from tqdm import tqdm
 
 from restorant_dataset import get_dataset
 from torchtext import data
 
-import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import os
 from torch.utils.tensorboard import SummaryWriter
-from utils import AccuracyTensorboradWriter, write_weight_statitsics, \
-    ask_user_confirmation, load_checkpoint, checkpoint
+from archive.utils import AccuracyTensorboradWriter, ask_user_confirmation, load_checkpoint, checkpoint
 
 from model_lstmp import LSTM_LORD
 
