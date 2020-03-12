@@ -21,7 +21,7 @@ class Evaluator:
 
     def evel_sentence(self, generated, original, generated_star):
         ppl = self.lm.perplexity(generated)
-        bleu = sentence_bleu([original.split(' ')], generated.split(' '), weights=[1, 0, 0, 0])
+        bleu = sentence_bleu([original], generated, weights=[1, 0, 0, 0])
 
         predicted_label = self.fasttext_classfier.predict(generated)[0][0]
         if self.labels_dictionary[predicted_label] == generated_star:
@@ -43,7 +43,12 @@ class Evaluator:
         loriginal = review.split(' ')[1:-1]
         soriginal = ' '.join(loriginal)
         original_ppl = self.lm.perplexity(soriginal)
-        bleu = sentence_bleu([loriginal], lgenerated, weights=[1, 0, 0, 0])
+        bleu = sentence_bleu([soriginal.replace('.', '')], sgenerated.replace('.', ''), weights=[1, 0, 0, 0])
+        bleu_weighted = sentence_bleu([soriginal.replace('.', '')], sgenerated.replace('.', ''))
+        if bleu_weighted < 0.1:
+            print(bleu_weighted)
+            print(loriginal)
+            print(lgenerated)
 
         predicted_label = self.fasttext_classfier.predict(sgenerated)[0][0]
         if self.labels_dictionary[predicted_label] == stars:
@@ -51,7 +56,7 @@ class Evaluator:
         else:
             classified = 0
 
-        return ppl, bleu, classified, soriginal, sgenerated, original_ppl
+        return ppl, bleu, classified, soriginal, sgenerated, original_ppl, bleu_weighted
 
 
 def evaluate(model, vocab, dataset, nsamples_to_eval, iteration_number, logger, writer: SummaryWriter, gready=True, device='cpu'):
@@ -77,13 +82,13 @@ def evaluate(model, vocab, dataset, nsamples_to_eval, iteration_number, logger, 
             stars = dataset[i].stars
             review_sentence = ' '.join(dataset[i].review)
 
-            ppl, bleu, classified, soriginal, sgenerated, original_ppl = evaluator.eval(model, vocab, review_sentence, stars, sid, gready, device=device)
+            ppl, bleu, classified, soriginal, sgenerated, original_ppl, bleu_weighted = evaluator.eval(model, vocab, review_sentence, stars, sid, gready, device=device)
             orig_ppl.append(original_ppl)
             reconstruct_ppl.append(ppl)
             reconstruct_bleu.append(bleu)
             classified_correct_reconstruct += classified
 
-            ppl, bleu, classified, soriginal, sgenerated_new, original_ppl = evaluator.eval(model, vocab, review_sentence, 1-stars, sid, gready, device=device)
+            ppl, bleu, classified, soriginal, sgenerated_new, original_ppl, bleu_weighted = evaluator.eval(model, vocab, review_sentence, 1-stars, sid, gready, device=device)
             new_ppl.append(ppl)
             new_bleu.append(bleu)
             classified_correct_generated += 1
@@ -188,36 +193,49 @@ def main():
     evaluator = Evaluator()
     fasttext_classfier = fasttext.FastText.load_model('/cs/labs/dshahaf/omribloch/data/text_lord/restorant/fasttext_model.bin')
 
+    dataset_ppl =[]
+
     orig_ppl = []
     orig_bleu = []
 
     new_ppl = []
     new_bleu = []
 
+    orig_wbleu = []
+    new_wbleu = []
+
     correct_counter = 0
+    counter = 0
 
-    for i in tqdm(range(args.samples_to_eval), disable=True):
-        sid = dataset[i].id
-        stars = dataset[i].stars
-        # stars = 1
-        review_sentence = ' '.join(dataset[i].review)
+    with open('/tmp/results_final.txt', 'w') as file:
+        for i in tqdm(range(args.samples_to_eval), disable=False):
+            sid = dataset[i].id
+            stars = dataset[i].stars
+            # stars = 1
+            review_sentence = ' '.join(dataset[i].review)
 
-        ppl, bleu, classified, soriginal, sgenerated, original_ppl = evaluator.eval(model, vocab, review_sentence, stars, sid, gready=args.gready)
-        orig_ppl.append(ppl)
-        orig_bleu.append(bleu)
+            ppl, bleu, classified, soriginal, sgenerated, original_ppl, bleu_weighted = evaluator.eval(model, vocab, review_sentence, stars, sid, gready=args.gready)
+            orig_ppl.append(ppl)
+            orig_bleu.append(bleu)
+            orig_wbleu.append(bleu_weighted)
+            dataset_ppl.append(original_ppl)
 
-        ppl, bleu, classified, soriginal, sgenerated_new, original_ppl = evaluator.eval(model, vocab, review_sentence, 1-stars, sid, gready=args.gready)
-        new_ppl.append(ppl)
-        new_bleu.append(bleu)
+            ppl, bleu, classified, soriginal, sgenerated_new, original_ppl, bleu_weighted_new = evaluator.eval(model, vocab, review_sentence, 1-stars, sid, gready=args.gready)
+            new_ppl.append(ppl)
+            new_bleu.append(bleu)
+            new_wbleu.append(bleu_weighted_new)
 
-        predicted_label = fasttext_classfier.predict(sgenerated)[0][0]
-        if labels_dictionary[predicted_label] == 1-stars:
-            correct_counter += 1
+            predicted_label = fasttext_classfier.predict(sgenerated_new)[0][0]
+            if labels_dictionary[predicted_label] == 1-stars:
+                correct_counter += 1
+            counter += 1
 
-        print('original - {}'.format(soriginal))
-        print('reconstruct - {}'.format(sgenerated))
-        print('oposite-sentiment - {}'.format(sgenerated_new))
+            file.write('\n\n===========================')
+            file.write('orig - {}\n'.format(soriginal))
+            file.write('reco - {}\n'.format(sgenerated))
+            file.write('opos - {}\n'.format(sgenerated_new))
 
+    print('dataset ppl {}'.format(np.average(dataset_ppl)))
 
     print(f'orig ppl: {np.average(orig_ppl)}')
     print(f'new ppl: {np.average(new_ppl)}')
@@ -225,7 +243,10 @@ def main():
     print(f'orig bleu: {np.average(orig_bleu)}')
     print(f'new bleu: {np.average(new_bleu)}')
 
-    print(f'classifier accuracy: {correct_counter / args.samples_to_eval}')
+    print(f'orig wbleu: {np.average(orig_wbleu)}')
+    print(f'new wbleu: {np.average(new_wbleu)}')
+
+    print(f'classifier accuracy: {correct_counter / counter}')
 
 
 print('haha')
