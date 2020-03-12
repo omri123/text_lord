@@ -153,6 +153,7 @@ def main():
     parser.add_argument('--nconv', type=int)
     parser.add_argument('--samples_to_eval', type=int)
     parser.add_argument('--gready', action='store_true')
+    parser.add_argument('--partitioned', action='store_true')
 
 
     args = parser.parse_args()
@@ -167,15 +168,16 @@ def main():
     decoder_dictionary = vocab_to_dictionary(vocab)
     dropout = 0
 
-    # model = load_checkpoint(model_ckpt_path, args.device,
-    #                         args.device, args.nsamples, decoder_dictionary.pad(),
-    #                         args.ntokens, args.dim, args.content_noise, dropout,
-    #                         decoder_dictionary, 50, args.nconv)
-
-    model = load_checkpoint_partitioned(model_ckpt_path, args.device,
-                            args.device, args.nsamples, decoder_dictionary.pad(),
-                            args.ntokens, args.dim, args.content_noise, dropout,
-                            decoder_dictionary, 50, args.nconv)
+    if not args.partitioned:
+        model = load_checkpoint(model_ckpt_path, args.device,
+                                args.device, args.nsamples, decoder_dictionary.pad(),
+                                args.ntokens, args.dim, args.content_noise, dropout,
+                                decoder_dictionary, 50, args.nconv)
+    else:
+        model = load_checkpoint_partitioned(model_ckpt_path, args.device,
+                                args.device, args.nsamples, decoder_dictionary.pad(),
+                                args.ntokens, args.dim, args.content_noise, dropout,
+                                decoder_dictionary, 50, args.nconv)
 
     print('model loaded')
 
@@ -200,25 +202,22 @@ def main():
         # stars = 1
         review_sentence = ' '.join(dataset[i].review)
 
-        if args.gready:
-            ppl, bleu, classified, soriginal, sgenerated, original_ppl = evaluator.eval(model, vocab, review_sentence, stars, sid, gready=True)
-            orig_ppl.append(ppl)
-            orig_bleu.append(bleu)
+        ppl, bleu, classified, soriginal, sgenerated, original_ppl = evaluator.eval(model, vocab, review_sentence, stars, sid, gready=args.gready)
+        orig_ppl.append(ppl)
+        orig_bleu.append(bleu)
 
-            ppl, bleu, classified, soriginal, sgenerated_new, original_ppl = evaluator.eval(model, vocab, review_sentence, 1-stars, sid, gready=True)
-            new_ppl.append(ppl)
-            new_bleu.append(bleu)
+        ppl, bleu, classified, soriginal, sgenerated_new, original_ppl = evaluator.eval(model, vocab, review_sentence, 1-stars, sid, gready=args.gready)
+        new_ppl.append(ppl)
+        new_bleu.append(bleu)
 
-            predicted_label = fasttext_classfier.predict(sgenerated)[0][0]
-            if labels_dictionary[predicted_label] == 1-stars:
-                correct_counter += 1
+        predicted_label = fasttext_classfier.predict(sgenerated)[0][0]
+        if labels_dictionary[predicted_label] == 1-stars:
+            correct_counter += 1
 
-            print('original - {}'.format(soriginal))
-            print('reconstruct - {}'.format(sgenerated))
-            print('oposite-sentiment - {}'.format(sgenerated_new))
+        print('original - {}'.format(soriginal))
+        print('reconstruct - {}'.format(sgenerated))
+        print('oposite-sentiment - {}'.format(sgenerated_new))
 
-        else:
-            raise Exception('not implemented yet!')
 
     print(f'orig ppl: {np.average(orig_ppl)}')
     print(f'new ppl: {np.average(new_ppl)}')
