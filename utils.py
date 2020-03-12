@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from torch.utils.tensorboard import SummaryWriter
 import fairseq
-from model import create_model
+from model import create_model, create_partitioned_model
 import os
 
 def calc_accuracy(logits_flat, targets_flat, ignore_index):
@@ -110,6 +110,13 @@ def checkpoint(model, path):
 def load_checkpoint(path, device, *args):
     print(f'loading checkpoint {path}')
     model = create_model(*args)
+    model.load_state_dict(torch.load(path, map_location=torch.device(device)))
+    return model
+
+
+def load_checkpoint_partitioned(path, device, *args):
+    print(f'loading checkpoint {path}')
+    model = create_partitioned_model(*args)
     model.load_state_dict(torch.load(path, map_location=torch.device(device)))
     return model
 

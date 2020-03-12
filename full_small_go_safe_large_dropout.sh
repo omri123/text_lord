@@ -9,4 +9,4 @@
 
 source /cs/labs/dshahaf/omribloch/env/fairseq/bin/activate.csh
 
-python /cs/labs/dshahaf/omribloch/projects/text_lord/main.py --overwrite --note full_small_large_dropout --batch_size 1024 --epochs 10 --content_wdecay 0.001 --dim 64 --content_noise 0.5 --nsamples 50000 --device cuda:0 --nconv 10 --it 30 -f --dropout 0.3
+python /cs/labs/dshahaf/omribloch/projects/text_lord/main.py --resume --note full_small_large_dropout --batch_size 1024 --epochs 10 --content_wdecay 0.001 --dim 64 --content_noise 0.5 --nsamples 50000 --device cuda:0 --nconv 10 --it 30 -f --dropout 0.3 --shuffle

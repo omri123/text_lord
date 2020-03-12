@@ -124,7 +124,7 @@ def beam_decode_single(model, vocab, sample_id, stars, beam_width=10, topk=1, de
             continue
 
         logits, _ = model(src_tokens, src_lengths, review_torch)
-        predictions = torch.log_softmax(logits, dim=1)
+        predictions = torch.log_softmax(logits, dim=2)
         log_probs, indexes = torch.topk(predictions, beam_width)
 
         for new_k in range(beam_width):

@@ -74,3 +74,28 @@ def get_dataset(max_examples, path, vocab=None):
         review_f.build_vocab(dataset)
 
     return dataset, review_f.vocab
+
+
+def get_splitted_datasets(max_examples, examples_per_page, path, vocab=None):
+    g = lines_generator(path=path)
+
+    id_f = data.Field(sequential=False, use_vocab=False)
+    stars_f = data.Field(sequential=False, use_vocab=False)
+    review_f = data.Field(sequential=True, use_vocab=True)
+
+    full_dataset = RestDataset(g, id_f, stars_f, review_f, max_examples)
+
+    g = lines_generator(path=path)
+
+    datasets = []
+    import math
+    for i in range(math.ceil(max_examples / examples_per_page)):
+        dataset = RestDataset(g, id_f, stars_f, review_f, examples_per_page)
+        datasets.append(dataset)
+
+    if vocab:
+            review_f.vocab = vocab
+    else:
+        review_f.build_vocab(full_dataset)
+
+    return datasets, review_f.vocab

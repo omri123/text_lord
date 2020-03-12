@@ -1,4 +1,4 @@
-from utils import load_checkpoint, vocab_to_dictionary
+from utils import load_checkpoint, vocab_to_dictionary, load_checkpoint_partitioned
 from restorant_dataset import get_dataset
 import os
 import pickle
@@ -36,7 +36,7 @@ class Evaluator:
         if gready:
             lgenerated = gready_decode_single(model, vocab, stars, sid, device=device).split(' ')[1:-1] # remove <s> and <\s>
         else:
-            lgenerated = beam_decode_single(model, vocab, sid, stars, beam_width=10, topk=1, device=device)[0]
+            lgenerated = beam_decode_single(model, vocab, sid, stars, beam_width=5, topk=1, device=device)[0].split(' ')[1:-1]
         sgenerated = ' '.join(lgenerated)
         ppl = self.lm.perplexity(sgenerated)
 
@@ -89,9 +89,9 @@ def evaluate(model, vocab, dataset, nsamples_to_eval, iteration_number, logger, 
             classified_correct_generated += 1
 
             if i % (len(dataset) // 10) == 0: # write only 10 texts to tensorboard.
-                writer.add_text(f'sample_{i}_orig', review_sentence, iteration_number)
-                writer.add_text(f'sample_{i}_reconstruct', soriginal, iteration_number)
-                writer.add_text(f'sample_{i}_new', sgenerated, iteration_number)
+                writer.add_text(f'sample_{i}_orig', soriginal, iteration_number)
+                writer.add_text(f'sample_{i}_reconstruct', sgenerated, iteration_number)
+                writer.add_text(f'sample_{i}_new', sgenerated_new, iteration_number)
                 writer.add_text(f'sample_{i}_original_sentiment', str(stars), iteration_number)
 
             counter += 1
@@ -167,7 +167,12 @@ def main():
     decoder_dictionary = vocab_to_dictionary(vocab)
     dropout = 0
 
-    model = load_checkpoint(model_ckpt_path, args.device,
+    # model = load_checkpoint(model_ckpt_path, args.device,
+    #                         args.device, args.nsamples, decoder_dictionary.pad(),
+    #                         args.ntokens, args.dim, args.content_noise, dropout,
+    #                         decoder_dictionary, 50, args.nconv)
+
+    model = load_checkpoint_partitioned(model_ckpt_path, args.device,
                             args.device, args.nsamples, decoder_dictionary.pad(),
                             args.ntokens, args.dim, args.content_noise, dropout,
                             decoder_dictionary, 50, args.nconv)
@@ -189,24 +194,28 @@ def main():
 
     correct_counter = 0
 
-    for i in tqdm(range(args.samples_to_eval)):
+    for i in tqdm(range(args.samples_to_eval), disable=True):
         sid = dataset[i].id
         stars = dataset[i].stars
         # stars = 1
         review_sentence = ' '.join(dataset[i].review)
 
         if args.gready:
-            ppl, bleu, _ = evaluator.eval(model, vocab, review_sentence, stars, sid)
+            ppl, bleu, classified, soriginal, sgenerated, original_ppl = evaluator.eval(model, vocab, review_sentence, stars, sid, gready=True)
             orig_ppl.append(ppl)
             orig_bleu.append(bleu)
 
-            ppl, bleu, s = evaluator.eval(model, vocab, review_sentence, 1-stars, sid)
+            ppl, bleu, classified, soriginal, sgenerated_new, original_ppl = evaluator.eval(model, vocab, review_sentence, 1-stars, sid, gready=True)
             new_ppl.append(ppl)
             new_bleu.append(bleu)
 
-            predicted_label = fasttext_classfier.predict(s)[0][0]
+            predicted_label = fasttext_classfier.predict(sgenerated)[0][0]
             if labels_dictionary[predicted_label] == 1-stars:
                 correct_counter += 1
+
+            print('original - {}'.format(soriginal))
+            print('reconstruct - {}'.format(sgenerated))
+            print('oposite-sentiment - {}'.format(sgenerated_new))
 
         else:
             raise Exception('not implemented yet!')

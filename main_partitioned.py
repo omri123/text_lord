@@ -6,15 +6,15 @@ import pickle
 import argparse
 import logging
 
-from restorant_dataset import get_dataset
-from model import create_model
+from restorant_dataset import get_splitted_datasets
+from model import create_model, create_partitioned_model
 import os
 from torch.utils.tensorboard import SummaryWriter
 from utils import AccuracyTensorboradWriter, write_weight_statitsics, \
     ask_user_confirmation, load_checkpoint, checkpoint, vocab_to_dictionary
 
 from eval import Evaluator
-from train import train
+from train_partitioned import train
 from eval import evaluate
 torch.manual_seed(1)
 
@@ -148,7 +148,7 @@ def main():
             print('vocab was loaded')
 
     # create dataset
-    dataset, vocab = get_dataset(args.nsamples, args.data_dir, vocab)
+    datasets, vocab = get_splitted_datasets(args.nsamples, 2**14,  args.data_dir, vocab)
     logger.info(f'dataset loaded, vocab size is {len(vocab)}')
 
     # serialize the vocab object
@@ -162,7 +162,7 @@ def main():
 
     # build model
     if not args.resume:
-        model = create_model(device, args.nsamples, decoder_dictionary.pad(),
+        model = create_partitioned_model(device, args.nsamples, decoder_dictionary.pad(),
                              args.ntokens, args.dim, args.content_noise, args.dropout,
                              decoder_dictionary, 50, args.nconv)
     else:
@@ -177,9 +177,12 @@ def main():
     global_epoch = 0
     for it in range(args.it):
         logger.info('-- iteration {} --'.format(it))
-        global_step, global_epoch = train(model, dataset, device, args.epochs, args.batch_size, decoder_dictionary.pad(), logger, args.content_wdecay,
+
+        global_step, global_epoch = train(model, datasets, device, args.epochs, args.batch_size, decoder_dictionary.pad(), logger, args.content_wdecay,
               writer, foldername, global_step=global_step, global_epoch=global_epoch, shuffle=args.shuffle)
-        evaluate(model, vocab, dataset, 10, it, logger, writer, device=device, gready=False)
+
+        model.encoder.set_partition(0)
+        evaluate(model, vocab, datasets[0], 10, it, logger, writer, device=device, gready=False)
     print('finished')
 
 
